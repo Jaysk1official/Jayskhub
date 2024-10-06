@@ -2,11 +2,20 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
 local aimEnabled = false  -- Aimbot/Highlight toggle variable
 local isMinimized = false -- Minimized state
+local isFlying = false -- Flying state
+local flyKey = Enum.KeyCode.F -- Default fly key is "F"
+local flySpeed = 50 -- Fly speed
+local flyControl = { Forward = 0, Backward = 0, Left = 0, Right = 0, Up = 0, Down = 0 }
+
+local currentTarget = nil -- The current player being tracked
+local autoAimEnabled = false -- Auto Aim feature
+local trackedHead = nil -- The head part being tracked for auto aim
 
 -- Function to create the UI
 local function createUI()
@@ -17,7 +26,7 @@ local function createUI()
 
     -- Create a Frame to hold the title and button
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, 200, 0, 150)
+    frame.Size = UDim2.new(0, 200, 0, 200)
     frame.Position = UDim2.new(0, 0, 0, 0)
     frame.BackgroundTransparency = 1
     frame.Visible = true -- Initially, it's visible (non-minimized)
@@ -57,6 +66,38 @@ local function createUI()
     toggleButton.MouseButton1Click:Connect(function()
         aimEnabled = not aimEnabled
         toggleButton.Text = "Toggle Aimbot: " .. (aimEnabled and "ON" or "OFF")
+    end)
+
+    -- Create a label and input field for customizing the fly key
+    local flyKeyLabel = Instance.new("TextLabel")
+    flyKeyLabel.Text = "Fly Key: " .. flyKey.Name
+    flyKeyLabel.Size = UDim2.new(0, 200, 0, 50)
+    flyKeyLabel.Position = UDim2.new(0, 0, 0, 150)
+    flyKeyLabel.TextScaled = true
+    flyKeyLabel.TextColor3 = Color3.new(1, 1, 1)
+    flyKeyLabel.BackgroundTransparency = 1
+    flyKeyLabel.Parent = frame
+
+    local changeFlyKeyButton = Instance.new("TextButton")
+    changeFlyKeyButton.Text = "Change Fly Key"
+    changeFlyKeyButton.Size = UDim2.new(0, 200, 0, 50)
+    changeFlyKeyButton.Position = UDim2.new(0, 0, 0, 200)
+    changeFlyKeyButton.TextScaled = true
+    changeFlyKeyButton.TextColor3 = Color3.new(1, 1, 1)
+    changeFlyKeyButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    changeFlyKeyButton.Parent = frame
+
+    -- Clicking this button will allow the player to change the fly key
+    changeFlyKeyButton.MouseButton1Click:Connect(function()
+        flyKeyLabel.Text = "Press any key..."
+        local connection
+        connection = UserInputService.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                flyKey = input.KeyCode
+                flyKeyLabel.Text = "Fly Key: " .. flyKey.Name
+                connection:Disconnect() -- Stop listening for key inputs
+            end
+        end)
     end)
 
     -- Create a minimized icon (with "jskH")
@@ -106,14 +147,16 @@ local function aimAtPlayerHead(targetPlayer)
     local head = getPlayerHead(targetPlayer)
     if head then
         -- Continuously track and aim at the player's head
+        trackedHead = head -- Store the head to track it
+
         RunService.RenderStepped:Connect(function()
-            if aimEnabled then
+            if aimEnabled and trackedHead then
                 -- Get the player's camera
                 local camera = workspace.CurrentCamera
                 -- Calculate direction to aim at the player's head
-                local aimDirection = (head.Position - camera.CFrame.Position).unit
+                local aimDirection = (trackedHead.Position - camera.CFrame.Position).unit
                 -- Set the mouse hit point to aim towards the player's head
-                Mouse.Hit = CFrame.new(camera.CFrame.Position, head.Position)
+                Mouse.Hit = CFrame.new(camera.CFrame.Position, trackedHead.Position)
             end
         end)
     end
@@ -128,96 +171,4 @@ local function createNameTag(player)
         -- Create a BillboardGui to display the username above the player's head
         local billboardGui = Instance.new("BillboardGui")
         billboardGui.Adornee = head
-        billboardGui.Size = UDim2.new(0, 100, 0, 50) -- Adjust size as necessary
-        billboardGui.StudsOffset = Vector3.new(0, 2, 0) -- Adjust the height of the tag
-        billboardGui.AlwaysOnTop = true -- Always visible above the head
-        billboardGui.Parent = head
-
-        -- Create the TextLabel inside the BillboardGui
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Text = player.Name
-        nameLabel.Size = UDim2.new(1, 0, 1, 0)
-        nameLabel.TextScaled = true
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text color
-        nameLabel.Parent = billboardGui
-    end
-end
-
--- Function to create a highlight for a player
-local function highlightPlayer(player)
-    if player ~= LocalPlayer and aimEnabled then
-        -- Wait until the player's character is available
-        player.CharacterAdded:Connect(function(character)
-            -- Create highlight
-            local highlight = Instance.new("Highlight")
-            highlight.Parent = character
-            highlight.FillColor = Color3.fromRGB(255, 0, 0) -- Red fill color
-            highlight.OutlineColor = Color3.fromRGB(255, 255, 255) -- White outline
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Visible through walls
-
-            -- Start aiming at the player's head
-            aimAtPlayerHead(player)
-
-            -- Create name tag
-            createNameTag(player)
-        end)
-
-        -- Handle case where the character is already loaded
-        if player.Character then
-            -- Create highlight
-            local character = player.Character
-            local highlight = Instance.new("Highlight")
-            highlight.Parent = character
-            highlight.FillColor = Color3.fromRGB(255, 0, 0)
-            highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Visible through walls
-
-            -- Start aiming at the player's head
-            aimAtPlayerHead(player)
-
-            -- Create name tag
-            createNameTag(player)
-        end
-    end
-end
-
--- Function to highlight all current players
-local function highlightAllPlayers()
-    for _, player in pairs(Players:GetPlayers()) do
-        highlightPlayer(player)
-    end
-end
-
--- Function to remove highlights and name tags
-local function clearHighlights()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player.Character then
-            for _, child in pairs(player.Character:GetChildren()) do
-                if child:IsA("Highlight") or child:IsA("BillboardGui") then
-                    child:Destroy() -- Remove existing highlights and name tags
-                end
-            end
-        end
-    end
-end
-
--- Function to refresh the highlights and name tags every 5 seconds
-local function refreshPlayers()
-    while true do
-        -- Clear all current highlights and name tags
-        clearHighlights()
-
-        -- Apply new highlights and name tags
-        highlightAllPlayers()
-
-        -- Wait 5 seconds before refreshing again
-        wait(5)
-    end
-end
-
--- Create the UI on game start
-createUI()
-
--- Start refreshing players every 5 seconds
-spawn(refresh
+        billboardGui.Size = UDim
